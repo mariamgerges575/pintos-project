@@ -11,9 +11,12 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+
+#include "lib/kernel/list.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
+
 
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
@@ -23,6 +26,8 @@
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
+
+static struct list sleep_list;    /*mariam*/
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -92,6 +97,8 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+
+  list_init(&sleep_list); /*mariam*/
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -183,6 +190,8 @@ thread_create (const char *name, int priority,
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
 
+  t->ticks_sleep=0;  /*mariam*/
+
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
   kf->eip = NULL;
@@ -197,6 +206,7 @@ thread_create (const char *name, int priority,
   sf = alloc_frame (t, sizeof *sf);
   sf->eip = switch_entry;
   sf->ebp = 0;
+
 
   /* Add to run queue. */
   thread_unblock (t);
@@ -237,7 +247,7 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  list_insert_ordered(&ready_list,&t->elem,(list_less_func *)& less_priority,NULL); //list_push_back (&ready_list, &t->elem);    /*mariam*/
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -308,12 +318,17 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+    list_insert_ordered(&ready_list,&cur->elem,(list_less_func *)& less_priority,NULL);            //list_push_back (&ready_list, &cur->elem); /*mariam*/
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
 }
 
+bool less_priority(struct list_elem *a_,struct list_elem *b_,void *aux UNUSED){      /*mariam*/
+  struct thread *a = list_entry (a_, struct thread, elem);
+  struct thread *b = list_entry (b_, struct thread, elem);
+  return a->priority > b->priority;
+}
 /* Invoke function 'func' on all threads, passing along 'aux'.
    This function must be called with interrupts off. */
 void
@@ -336,6 +351,14 @@ void
 thread_set_priority (int new_priority) 
 {
   thread_current ()->priority = new_priority;
+  /*mariam*/
+  int max= list_max(&ready_list ,(list_less_func*)& max_util,NULL); 
+  if(new_priority>max ) //virtual priorty
+    thread_yield(); 
+  /*mariam*/
+}
+bool max_util(struct list_elem *a,struct list_elem *b ,void *aux UNUSED){    /*mariam*/
+  return list_entry(a,struct thread,elem) > list_entry(b,struct thread,elem);
 }
 
 /* Returns the current thread's priority. */
@@ -465,7 +488,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();
-  list_push_back (&all_list, &t->allelem);
+  list_insert_ordered(&all_list,&t->elem,(list_less_func *)& less_priority,NULL);   //list_push_back (&all_list, &t->allelem);  /*mariam*/
   intr_set_level (old_level);
 }
 

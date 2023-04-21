@@ -7,7 +7,7 @@
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
-  
+#include "threads/thread.c"  /*mariam*/
 /* See [8254] for hardware details of the 8254 timer chip. */
 
 #if TIMER_FREQ < 19
@@ -87,14 +87,28 @@ timer_elapsed (int64_t then)
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
 void
-timer_sleep (int64_t ticks) 
+timer_sleep (int64_t ticks_to_wait) 
 {
   int64_t start = timer_ticks ();
 
   ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+  /*while (timer_elapsed (start) < ticks) 
+    thread_yield ();*/
+  struct thread *t=thread_current();  /*mariam*/
+  t->ticks_sleep=ticks+ticks_to_wait;    /*mariam*/
+
+  list_insert_ordered(&sleep_list,&t->sleep_elem,(list_less_func *)less_ticks,NULL); /*mariam*/
+  t->status=THREAD_BLOCKED;
+  schedule ();
+  
 }
+bool less_ticks(const struct list_elem *a_, const struct list_elem *b_,void *aux UNUSED) { /*mariam*/
+
+  struct thread *a = list_entry (a_, struct thread, sleep_elem);
+  struct thread *b = list_entry (b_, struct thread, sleep_elem);
+  return a->ticks_sleep < b->ticks_sleep;
+}
+
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
    turned on. */
@@ -172,6 +186,22 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick ();
+
+  /*mariam*/
+  struct list_elem *e;
+  for (e = list_begin (&sleep_list); e != list_end (&sleep_list);
+       e = list_next (e))
+    {
+      struct thread *t = list_entry (e, struct thread,sleep_elem );
+      if(t->ticks_sleep>ticks)
+        break;
+      if(t->ticks_sleep ==ticks){
+        list_push_back (&ready_list, &t->elem);
+        list_remove(e);
+      }
+    }
+  /*mariam*/
+
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

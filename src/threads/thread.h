@@ -91,7 +91,11 @@ struct thread
     struct list_elem allelem;           /* List element for all threads list. */
 
     /* Shared between thread.c and synch.c. */
-    struct list_elem elem;              /* List element. */
+    struct list_elem elem;              /* List element. */ //for readylist
+    
+    struct list_elem sleep_elem;     /*mariam*/
+    int64_t ticks_sleep;   /*mariam*/
+
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -106,6 +110,8 @@ struct thread
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
+
+bool less_priority(struct list_elem *a_,struct list_elem *b_,void *aux UNUSED); /*mariam*/
 
 void thread_init (void);
 void thread_start (void);
